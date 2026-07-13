@@ -1,0 +1,25 @@
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+**/.DS_Store
+*.swp
+*~
+
+# Xcode (if opened later)
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Logs / temp
+*.log
+/tmp/
+
+# Secrets — never commit tokens
+.env
+.env.*
+*.pem
+credentials*
