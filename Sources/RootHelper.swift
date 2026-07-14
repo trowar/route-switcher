@@ -228,10 +228,42 @@ enum RootHelper {
                 return false
             }
         }
-        if !t.contains(" add") && !t.contains(" delete") {
-            return false
+        // 允许：add/delete host 路由，以及恢复默认网关（OpenVPN 断开后）
+        let isHost = t.contains(" -host ")
+        let isDefault = t.contains(" default") || t.contains(" default ")
+        let isAddOrDelete = t.contains(" add") || t.contains(" delete")
+        guard isAddOrDelete else { return false }
+        guard isHost || isDefault else { return false }
+
+        // default 命令只允许纯网关 IP，禁止任意参数注入
+        if isDefault && !isHost {
+            // 例如: /sbin/route -n add default 192.168.0.1
+            //       /sbin/route -n delete default 192.168.0.1 2>/dev/null || true
+            let stripped = t
+                .replacingOccurrences(of: "2>/dev/null", with: "")
+                .replacingOccurrences(of: "|| true", with: "")
+                .replacingOccurrences(of: "||true", with: "")
+            let tokens = stripped.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            guard tokens.count >= 3, tokens[0] == "/sbin/route" else { return false }
+            // 所有 token 只能是 route 标志、default、IPv4
+            for tok in tokens.dropFirst() {
+                if tok == "-n" || tok == "add" || tok == "delete" || tok == "default" {
+                    continue
+                }
+                if isIPv4Token(tok) { continue }
+                return false
+            }
         }
         return true
+    }
+
+    private static func isIPv4Token(_ s: String) -> Bool {
+        let parts = s.split(separator: ".")
+        guard parts.count == 4 else { return false }
+        return parts.allSatisfy { p in
+            guard let n = Int(p), (0...255).contains(n) else { return false }
+            return true
+        }
     }
 
     private static func runShell(_ command: String) -> Int32 {

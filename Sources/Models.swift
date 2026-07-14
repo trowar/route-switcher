@@ -114,6 +114,10 @@ struct NetworkSnapshot: Sendable, Equatable {
     var interfaces: [String]
     /// 显式覆盖：有网关无接口时仍可用
     var vpnAvailableOverride: Bool?
+    /// 系统缺少可用的 IPv4 默认路由（常见于 OpenVPN 断开后未恢复）
+    var defaultRouteMissing: Bool
+    /// 最近一次 VPN 隧道网关（断开后仍可用于清理残留 default）
+    var lastKnownVPNGateway: String?
 
     var vpnAvailable: Bool {
         if let o = vpnAvailableOverride { return o }
@@ -147,7 +151,9 @@ struct NetworkSnapshot: Sendable, Equatable {
         defaultGateway: nil,
         isVPNDefault: false,
         interfaces: [],
-        vpnAvailableOverride: nil
+        vpnAvailableOverride: nil,
+        defaultRouteMissing: false,
+        lastKnownVPNGateway: nil
     )
 }
 
