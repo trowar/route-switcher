@@ -5,9 +5,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DISPLAY_NAME="路由切换器"
-# 版本号：年-月日，例如 2026-07-14
-VERSION="${APP_VERSION:-$(date +%Y-%m-%d)}"
-BUILD_NUMBER="$(date +%Y%m%d)"
+# 版本号：年-月日-时分秒（月日合并），例如 2026-0714-153045
+VERSION="${APP_VERSION:-$(date +%Y-%m%d-%H%M%S)}"
+BUILD_NUMBER="$(date +%Y%m%d%H%M%S)"
 
 echo "→ Building ${DISPLAY_NAME} (release) version ${VERSION}…"
 

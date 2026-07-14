@@ -11,24 +11,24 @@ enum RouteMode: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .system: return "跟随系统"
-        case .vpn: return "走 VPN"
-        case .local: return "走本地"
+        case .system: return "默认"
+        case .vpn: return "VPN"
+        case .local: return "本地"
         }
     }
 
     /// 全局默认选项文案
     var defaultPolicyTitle: String {
         switch self {
-        case .system: return "跟随系统（不强制）"
-        case .vpn: return "默认走 VPN"
-        case .local: return "默认走本地"
+        case .system: return "默认"
+        case .vpn: return "VPN"
+        case .local: return "本地"
         }
     }
 
     var shortTitle: String {
         switch self {
-        case .system: return "系统"
+        case .system: return "默认"
         case .vpn: return "VPN"
         case .local: return "本地"
         }
@@ -47,6 +47,18 @@ enum RouteMode: String, Codable, CaseIterable, Identifiable, Sendable {
         case .system: return "secondary"
         case .vpn: return "blue"
         case .local: return "green"
+        }
+    }
+
+    /// 行内三档开关顺序：左 VPN · 中 默认 · 右 本地
+    static var switchOrder: [RouteMode] { [.vpn, .system, .local] }
+
+    /// 三档开关上的短文案
+    var switchLabel: String {
+        switch self {
+        case .vpn: return "VPN"
+        case .system: return "默认"
+        case .local: return "本地"
         }
     }
 }
@@ -92,6 +104,10 @@ struct ProcessItem: Identifiable, Hashable, Sendable {
     let isApp: Bool
     let connectionCount: Int
     let remoteIPs: [String]
+    /// 仍绑定在 VPN 接口地址上的远端 IP（主机路由已写但旧连接未切换）
+    let vpnBoundRemoteIPs: [String]
+    /// 该 App 下用于发起网络的 helper PID（含 Network Service）
+    let networkPIDs: [Int32]
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(matchKey)

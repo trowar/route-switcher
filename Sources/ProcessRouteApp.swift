@@ -11,11 +11,11 @@ struct ProcessRouteApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("路由") {
-                Button("选中 → 走 VPN") { model.applyModeToSelection(.vpn) }
+                Button("选中 → VPN（左）") { model.applyModeToSelection(.vpn) }
                     .keyboardShortcut("v", modifiers: [.command, .shift])
-                Button("选中 → 走本地") { model.applyModeToSelection(.local) }
+                Button("选中 → 默认（中）") { model.applyModeToSelection(.system) }
+                Button("选中 → 本地（右）") { model.applyModeToSelection(.local) }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
-                Button("选中 → 系统默认") { model.applyModeToSelection(.system) }
             }
         }
 

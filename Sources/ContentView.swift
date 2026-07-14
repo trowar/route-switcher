@@ -78,34 +78,18 @@ struct ContentView: View {
                 )
             }
 
-            Section("全局默认") {
+            Section("全局默认（中间档）") {
+                // 与行内一致：左 VPN · 中 默认 · 右 本地
                 Picker("未单独设置的进程", selection: Binding(
                     get: { model.defaultMode },
                     set: { model.setDefaultMode($0) }
                 )) {
-                    ForEach(RouteMode.allCases) { mode in
-                        Label(mode.defaultPolicyTitle, systemImage: mode.systemImage)
-                            .tag(mode)
+                    ForEach(RouteMode.switchOrder) { mode in
+                        Text(mode.switchLabel).tag(mode)
                     }
                 }
-                .pickerStyle(.radioGroup)
+                .pickerStyle(.segmented)
                 .labelsHidden()
-
-                Text("进程单独规则优先于全局默认。清除某进程规则后，会重新跟随此处设置。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("进程规则 (\(model.rules.count))") {
-                if model.rules.isEmpty {
-                    Text("可在右侧为个别进程覆盖全局默认")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(model.rules) { rule in
-                        ruleRow(rule)
-                    }
-                }
             }
 
             Section("已应用主机路由 (\(model.appliedRoutes.count))") {
@@ -143,7 +127,7 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // App 左下角版本号（年-月日）
             HStack(spacing: 6) {
-                Text(model.appVersion)
+                Text("version \(model.appVersion)")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
@@ -170,34 +154,6 @@ struct ContentView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            }
-        }
-    }
-
-    private func ruleRow(_ rule: RouteRule) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: rule.mode.systemImage)
-                .foregroundStyle(rule.mode == .vpn ? Color.blue : Color.green)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(rule.processName)
-                    .lineLimit(1)
-                Text(rule.mode.title + (rule.enabled ? "" : " · 已禁用"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { rule.enabled },
-                set: { _ in model.toggleRule(rule) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-        }
-        .contextMenu {
-            Button("删除规则", role: .destructive) {
-                model.removeRule(rule)
             }
         }
     }
@@ -241,16 +197,22 @@ struct ContentView: View {
             if model.filteredProcesses.isEmpty {
                 emptyState
             } else {
+                // 按父进程/应用归类（ProcessMonitor 已合并 Helper）
                 List(selection: $model.selectedIDs) {
+                    Section {
+                        HStack {
+                            Text("应用（按父进程归类）")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("VPN    默认    本地")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                     ForEach(model.filteredProcesses) { item in
                         processRow(item)
                             .tag(item.id)
-                            .contextMenu {
-                                Button("走 VPN") { model.applyMode(.vpn, to: [item]) }
-                                Button("走本地") { model.applyMode(.local, to: [item]) }
-                                Divider()
-                                Button("恢复系统默认") { model.applyMode(.system, to: [item]) }
-                            }
                     }
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -300,7 +262,7 @@ struct ContentView: View {
                             .background(Color.secondary.opacity(0.15), in: Capsule())
                     }
                 }
-                Text("\(item.matchKey)  ·  PID \(item.pid)（含多窗口/Helper）")
+                Text("\(item.matchKey)  ·  PID \(item.pid)（含 Helper/子进程）")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -313,39 +275,72 @@ struct ContentView: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            modeBadge(for: item)
+            // 左 VPN · 中 默认 · 右 本地
+            modeSwitch(for: item)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 
-    private func modeBadge(for item: ProcessItem) -> some View {
-        let mode = model.mode(for: item)
-        let explicit = model.hasExplicitRule(for: item)
-        let label: String = {
-            if explicit { return mode.shortTitle }
-            if mode == .system { return "系统" }
-            return "默·\(mode.shortTitle)"
+    /// 三档切换：左 VPN / 中 默认 / 右 本地
+    private func modeSwitch(for item: ProcessItem) -> some View {
+        // 显示「生效策略」：有单独规则用规则，否则中间「默认」
+        let selected: RouteMode = {
+            if model.hasExplicitRule(for: item) {
+                return model.mode(for: item)
+            }
+            return .system
         }()
-        return HStack(spacing: 4) {
-            Image(systemName: mode.systemImage)
-            Text(label)
+
+        return HStack(spacing: 0) {
+            ForEach(RouteMode.switchOrder) { mode in
+                let on = selected == mode
+                Button {
+                    model.applyMode(mode, to: [item])
+                } label: {
+                    Text(mode.switchLabel)
+                        .font(.caption.weight(on ? .semibold : .regular))
+                        .frame(minWidth: 40)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            on
+                                ? switchFill(mode)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                        .foregroundStyle(on ? switchFg(mode) : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(switchHelp(mode, item: item))
+            }
         }
-        .font(.caption.weight(.semibold))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(badgeColor(mode).opacity(explicit ? 0.18 : 0.10), in: Capsule())
-        .foregroundStyle(badgeColor(mode))
-        .help(explicit ? "进程单独规则：\(mode.title)" : "跟随全局默认：\(mode.defaultPolicyTitle)")
+        .padding(3)
+        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private func badgeColor(_ mode: RouteMode) -> Color {
+    private func switchFill(_ mode: RouteMode) -> Color {
         switch mode {
-        case .system: return .secondary
-        case .vpn: return .blue
-        case .local: return .green
+        case .vpn: return Color.blue.opacity(0.9)
+        case .system: return Color.primary.opacity(0.12)
+        case .local: return Color.green.opacity(0.85)
+        }
+    }
+
+    private func switchFg(_ mode: RouteMode) -> Color {
+        switch mode {
+        case .vpn, .local: return .white
+        case .system: return .primary
+        }
+    }
+
+    private func switchHelp(_ mode: RouteMode, item: ProcessItem) -> String {
+        switch mode {
+        case .vpn: return "\(item.name) → VPN"
+        case .system: return "\(item.name) → 默认（全局：\(model.defaultMode.defaultPolicyTitle)）"
+        case .local: return "\(item.name) → 本地"
         }
     }
 
@@ -358,35 +353,23 @@ struct ContentView: View {
 
             Spacer()
 
+            // 批量：左 VPN · 中 默认 · 右 本地
             Text("已选 \(model.selectedIDs.count)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Button {
-                model.applyModeToSelection(.vpn)
-            } label: {
-                Label("走 VPN", systemImage: "lock.shield.fill")
+            HStack(spacing: 0) {
+                Button("VPN") { model.applyModeToSelection(.vpn) }
+                    .keyboardShortcut("v", modifiers: [.command, .shift])
+                    .help("选中 → VPN")
+                Button("默认") { model.applyModeToSelection(.system) }
+                    .help("选中 → 默认")
+                Button("本地") { model.applyModeToSelection(.local) }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .help("选中 → 本地")
             }
             .disabled(model.selectedIDs.isEmpty)
-            .keyboardShortcut("v", modifiers: [.command, .shift])
-            .help("将选中进程的目标地址路由到 VPN")
-
-            Button {
-                model.applyModeToSelection(.local)
-            } label: {
-                Label("走本地", systemImage: "house.fill")
-            }
-            .disabled(model.selectedIDs.isEmpty)
-            .keyboardShortcut("l", modifiers: [.command, .shift])
-            .help("将选中进程的目标地址绕过 VPN 走本地网关")
-
-            Button {
-                model.applyModeToSelection(.system)
-            } label: {
-                Label("跟随默认", systemImage: "circle.dashed")
-            }
-            .disabled(model.selectedIDs.isEmpty)
-            .help("清除该进程单独规则，改回跟随左侧「全局默认」")
+            .controlSize(.small)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

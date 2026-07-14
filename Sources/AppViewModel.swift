@@ -318,7 +318,20 @@ final class AppViewModel: ObservableObject {
             ? "已清除 \(names) 的单独规则（将跟随全局默认：\(defaultMode.defaultPolicyTitle)）"
             : "已设置 \(names) → \(mode.title)，正在写入路由…"
         didInitialRouteApply = true
-        Task { await ensurePrivilegeThenSync(reason: "手动设置规则") }
+        Task {
+            await ensurePrivilegeThenSync(reason: "手动设置规则")
+            // 设为走本地后立刻重置网络 helper，避免旧连接继续走 VPN
+            if mode == .local {
+                let targets = items
+                let bounced = await Task.detached(priority: .utility) {
+                    targets.filter { NetworkBounce.forceBounce(process: $0) }.map(\.name)
+                }.value
+                if !bounced.isEmpty {
+                    statusMessage =
+                        "\(names) 已设为走本地；已重置网络进程，请刷新页面验证出口 IP"
+                }
+            }
+        }
     }
 
     func applyModeToSelection(_ mode: RouteMode) {
@@ -499,9 +512,15 @@ final class AppViewModel: ObservableObject {
                         "规则 \(rules.filter(\.enabled).count) 条已生效条件不足：匹配到 0 个外连 IP。请确认目标 App 正在上网（\(reason)）"
                     lastError =
                         "未匹配到外连 IP。\nVPN: \(network.vpnSummary)\n本地: \(network.localSummary)\n\(result.summary)"
+                } else if !result.bouncedApps.isEmpty {
+                    statusMessage =
+                        "已写入 \(appliedRoutes.count) 条主机路由，并重置 \(result.bouncedApps.joined(separator: "、")) 网络进程使「走本地」立即生效"
                 } else {
                     statusMessage = "已写入 \(appliedRoutes.count) 条主机路由（\(reason)）"
                 }
+            } else if !result.bouncedApps.isEmpty {
+                statusMessage =
+                    "已重置 \(result.bouncedApps.joined(separator: "、")) 网络连接（旧连接仍走 VPN → 已强制重连）"
             }
         } catch {
             if !silent {
@@ -514,6 +533,7 @@ final class AppViewModel: ObservableObject {
     private struct SyncResult {
         let ipCount: Int
         let summary: String
+        let bouncedApps: [String]
     }
 
     private func performSync() async throws -> SyncResult {
@@ -543,7 +563,8 @@ final class AppViewModel: ObservableObject {
             if !needsLocal {
                 return SyncResult(
                     ipCount: 0,
-                    summary: "VPN 已断开，已清除 VPN 主机路由；等待 VPN 重连"
+                    summary: "VPN 已断开，已清除 VPN 主机路由；等待 VPN 重连",
+                    bouncedApps: []
                 )
             }
         }
@@ -579,12 +600,42 @@ final class AppViewModel: ObservableObject {
             return "\(rule.processName)(\(rule.mode.shortTitle):\(n)IP)"
         }.joined(separator: ", ")
 
-        let summary =
+        var summary =
             "默认:\(globalDefault.shortTitle) · 进程规则: \(matchedApps.isEmpty ? "无" : matchedApps) · VPN \(vpnN) · 本地 \(localN)"
 
         try await engine.sync(targets: targets, network: net)
         appliedRoutes = await engine.currentApplied()
-        return SyncResult(ipCount: ipCount, summary: summary)
+
+        // 关键：主机路由已指向本地网关，但 Chrome 等长连接仍绑在 VPN IP（10.8.x）上，
+        // 查 IP 网站仍显示代理。重置 Network Service 迫使按新路由重连。
+        var bounced: [String] = []
+        if net.vpnAvailable && localN > 0 {
+            let localKeys = Set(
+                list.compactMap { item -> String? in
+                    let mode: RouteMode = {
+                        if let r = effectiveRules.first(where: {
+                            $0.enabled && ProcessMonitor.matches($0, process: item)
+                        }) {
+                            return r.mode
+                        }
+                        return effectiveDefault
+                    }()
+                    return mode == .local ? item.matchKey : nil
+                }
+            )
+            bounced = await Task.detached(priority: .utility) {
+                NetworkBounce.bounceAppsIfNeeded(
+                    processes: list,
+                    localModeMatchKeys: localKeys,
+                    vpnInterfaceAddresses: [] // 已用连接侧 isVPNBound 判断
+                )
+            }.value
+            if !bounced.isEmpty {
+                summary += " · 已重置 \(bounced.joined(separator: "、")) 网络连接"
+            }
+        }
+
+        return SyncResult(ipCount: ipCount, summary: summary, bouncedApps: bounced)
     }
 
     func appIcon(for item: ProcessItem) -> NSImage {

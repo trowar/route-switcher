@@ -146,6 +146,7 @@ actor RouteEngine {
             }
             return nil
         case .local:
+            // 主机路由经本地网关；OpenVPN 的 0/1 全隧道下，/32 主机路由优先
             if let gw = network.localGateway {
                 return "/sbin/route -n add -host \(ip) \(gw)"
             }
