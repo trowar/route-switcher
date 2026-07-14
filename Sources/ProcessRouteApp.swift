@@ -56,12 +56,15 @@ struct SettingsView: View {
             }
             Section("关于") {
                 LabeledContent("名称", value: "路由切换器")
-                LabeledContent("版本", value: "1.3.0")
+                LabeledContent("版本", value: AppVersion.current)
                 LabeledContent("最低系统", value: "macOS 14+")
+                Button("检查更新…") {
+                    Task { await model.checkForUpdates(silent: false) }
+                }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 320)
+        .frame(width: 420, height: 360)
         .padding()
     }
 }

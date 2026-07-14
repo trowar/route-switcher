@@ -19,8 +19,9 @@ macOS 图形界面工具：按**应用**选择网络走 **VPN** 还是 **本地�
 ### 预编译应用
 
 - 仓库目录：`dist/路由切换器.app`（及 zip）
-- Release 下载：[RouteSwitcher.app.zip](https://github.com/trowar/route-switcher/releases/download/v1.4.0/RouteSwitcher.app.zip)
+- Release 下载：[RouteSwitcher.app.zip](https://github.com/trowar/route-switcher/releases/latest/download/RouteSwitcher.app.zip)
 - 全部版本：[Releases](https://github.com/trowar/route-switcher/releases)
+- **版本号**：`年-月日`（如 `2026-07-14`），显示在窗口左下角；启动时自动对照 GitHub 最新 Release，有更新会提示下载替换
 
 **打开方式：**
 

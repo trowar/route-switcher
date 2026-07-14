@@ -23,6 +23,15 @@ final class AppViewModel: ObservableObject {
     /// 未单独设规则的进程：跟随系统 / 默认 VPN / 默认本地
     @Published var defaultMode: RouteMode = .system
 
+    /// 左下角版本号（年-月日）
+    @Published var appVersion: String = AppVersion.current
+    /// 发现新版本时弹窗
+    @Published var showUpdateAlert: Bool = false
+    @Published var updateAlertMessage: String = ""
+    @Published var pendingRemoteRelease: UpdateChecker.RemoteRelease?
+    @Published var isUpdating: Bool = false
+    @Published var updateStatus: String = ""
+
     private let engine = RouteEngine()
     private var processRefreshTask: Task<Void, Never>?
     private var networkRefreshTask: Task<Void, Never>?
@@ -84,11 +93,18 @@ final class AppViewModel: ObservableObject {
             return
         }
         didStart = true
+        appVersion = AppVersion.current
         rules = RuleStore.shared.load()
         defaultMode = RuleStore.shared.loadDefaultMode()
         statusMessage = "正在加载进程…"
         refreshAll()
         startPathMonitor()
+
+        // 启动时检查 GitHub 是否有新版本
+        Task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            await checkForUpdates(silent: true)
+        }
 
         // 启动时只提权一次；之后改规则 / 定时同步都不再弹密码
         Task {
@@ -576,5 +592,64 @@ final class AppViewModel: ObservableObject {
             return NSWorkspace.shared.icon(forFile: path)
         }
         return NSWorkspace.shared.icon(for: UTType.application)
+    }
+
+    // MARK: - 版本更新
+
+    /// 对照 GitHub latest release；有更新则弹窗
+    func checkForUpdates(silent: Bool) async {
+        let result = await UpdateChecker.check()
+        appVersion = result.localVersion
+        if result.updateAvailable, let remote = result.remote {
+            pendingRemoteRelease = remote
+            updateAlertMessage =
+                "发现新版本 \(remote.version)\n当前版本 \(result.localVersion)\n\n点击「更新」将从 GitHub 下载并替换本应用后重启。"
+            showUpdateAlert = true
+        } else if !silent {
+            if result.remote == nil {
+                lastError = result.message
+            } else {
+                statusMessage = result.message
+            }
+        }
+    }
+
+    /// 用户确认更新：下载 zip → 替换 .app → 重启
+    func confirmUpdate() {
+        guard let remote = pendingRemoteRelease else {
+            // 无解析结果时仍打开发布页
+            if let u = URL(string: UpdateChecker.releasesPage) {
+                NSWorkspace.shared.open(u)
+            }
+            showUpdateAlert = false
+            return
+        }
+        showUpdateAlert = false
+        isUpdating = true
+        updateStatus = "正在从 GitHub 下载…"
+        statusMessage = "正在下载更新 \(remote.version)…"
+
+        Task {
+            do {
+                try await UpdateChecker.downloadAndReplace(remote: remote)
+                // 正常会启动新进程并退出；若未退出则提示
+                updateStatus = "已替换，正在重启…"
+            } catch UpdateChecker.UpdateError.noDownloadURL {
+                // 已打开网页
+                isUpdating = false
+                statusMessage = "已打开 GitHub 下载页，请手动安装"
+            } catch {
+                isUpdating = false
+                // 回退：打开发布页让用户手动下
+                UpdateChecker.openDownloadPage(remote: remote)
+                lastError =
+                    "自动替换失败：\(error.localizedDescription)\n已打开 GitHub，请下载后手动替换应用。"
+                statusMessage = "更新失败，已打开下载页"
+            }
+        }
+    }
+
+    func dismissUpdateAlert() {
+        showUpdateAlert = false
     }
 }

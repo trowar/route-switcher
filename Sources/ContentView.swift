@@ -22,6 +22,30 @@ struct ContentView: View {
         } message: {
             Text(model.lastError ?? "")
         }
+        .alert("发现新版本", isPresented: $model.showUpdateAlert) {
+            Button("取消", role: .cancel) { model.dismissUpdateAlert() }
+            Button("更新") { model.confirmUpdate() }
+        } message: {
+            Text(model.updateAlertMessage)
+        }
+        .overlay {
+            if model.isUpdating {
+                ZStack {
+                    Color.black.opacity(0.25).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.large)
+                        Text(model.updateStatus.isEmpty ? "正在更新…" : model.updateStatus)
+                            .font(.headline)
+                        Text("下载完成后将自动替换并重启")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(28)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }
+        }
     }
 
     // MARK: - Sidebar
@@ -116,6 +140,22 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // App 左下角版本号（年-月日）
+            HStack(spacing: 6) {
+                Text(model.appVersion)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.bar)
+            .help("当前版本（年-月日）。双击可手动检查 GitHub 更新。")
+            .onTapGesture(count: 2) {
+                Task { await model.checkForUpdates(silent: false) }
+            }
+        }
     }
 
     private func networkRow(title: String, ok: Bool, detail: String) -> some View {
